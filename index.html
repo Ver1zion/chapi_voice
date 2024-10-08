@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Room</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mediasoup-client/3.6.33/mediasoup.min.js"></script>
+  </head>
+  <body>
+    <button class="voice-in">Join Voice Room</button>
+
+    <script>
+      const socket = io.connect("http://localhost:3000");
+      let device, transport;
+
+      // При клике на элемент с классом voice-in
+      document
+        .querySelector(".voice-in")
+        .addEventListener("click", async () => {
+          socket.emit("join-voice");
+
+          // Получение параметров транспорта от сервера
+          socket.on("transport-created", async ({ transportParams }) => {
+            device = new mediasoup.Device();
+
+            // Загружаем RTP возможности устройства
+            await device.load({
+              routerRtpCapabilities: transportParams.rtpCapabilities,
+            });
+
+            // Создаём транспорт для отправки аудио
+            transport = device.createSendTransport(transportParams);
+
+            transport.on("connect", ({ dtlsParameters }, callback, errback) => {
+              socket.emit("connect-transport", { dtlsParameters });
+              callback();
+            });
+
+            // Захватываем аудио с микрофона
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+            });
+            const track = stream.getAudioTracks()[0];
+
+            // Отправляем аудиопоток
+            const producer = await transport.produce({ track });
+
+            // Сообщаем серверу об отправке аудио
+            socket.emit("send-audio", {
+              transportId: transport.id,
+              rtpCapabilities: device.rtpCapabilities,
+            });
+          });
+        });
+    </script>
+  </body>
+</html>
